@@ -27,7 +27,7 @@ void delayed_work_timer_fn(unsigned long __data);
 enum {
 	WORK_STRUCT_PENDING_BIT	= 0,	/* work item is pending execution */
 	WORK_STRUCT_DELAYED_BIT	= 1,	/* work item is delayed */
-	WORK_STRUCT_CWQ_BIT	= 2,	/* data points to cwq */
+	WORK_STRUCT_PWQ_BIT	= 2,	/* data points to pwq */
 	WORK_STRUCT_LINKED_BIT	= 3,	/* next work is linked to this one */
 #ifdef CONFIG_DEBUG_OBJECTS_WORK
 	WORK_STRUCT_STATIC_BIT	= 4,	/* static initializer (debugobjects) */
@@ -40,7 +40,7 @@ enum {
 
 	WORK_STRUCT_PENDING	= 1 << WORK_STRUCT_PENDING_BIT,
 	WORK_STRUCT_DELAYED	= 1 << WORK_STRUCT_DELAYED_BIT,
-	WORK_STRUCT_CWQ		= 1 << WORK_STRUCT_CWQ_BIT,
+	WORK_STRUCT_PWQ		= 1 << WORK_STRUCT_PWQ_BIT,
 	WORK_STRUCT_LINKED	= 1 << WORK_STRUCT_LINKED_BIT,
 #ifdef CONFIG_DEBUG_OBJECTS_WORK
 	WORK_STRUCT_STATIC	= 1 << WORK_STRUCT_STATIC_BIT,
@@ -57,29 +57,35 @@ enum {
 
 	/* special cpu IDs */
 	WORK_CPU_UNBOUND	= NR_CPUS,
-	WORK_CPU_NONE		= NR_CPUS + 1,
-	WORK_CPU_LAST		= WORK_CPU_NONE,
+	WORK_CPU_END		= NR_CPUS + 1,
 
 	/*
-	 * Reserve 7 bits off of cwq pointer w/ debugobjects turned
-	 * off.  This makes cwqs aligned to 256 bytes and allows 15
-	 * workqueue flush colors.
+	 * Reserve 7 bits off of pwq pointer w/ debugobjects turned off.
+	 * This makes pwqs aligned to 256 bytes and allows 15 workqueue
+	 * flush colors.
 	 */
 	WORK_STRUCT_FLAG_BITS	= WORK_STRUCT_COLOR_SHIFT +
 				  WORK_STRUCT_COLOR_BITS,
 
-	/* data contains off-queue information when !WORK_STRUCT_CWQ */
+	/* data contains off-queue information when !WORK_STRUCT_PWQ */
 	WORK_OFFQ_FLAG_BASE	= WORK_STRUCT_FLAG_BITS,
 
 	WORK_OFFQ_CANCELING	= (1 << WORK_OFFQ_FLAG_BASE),
-
+	/*
+	 * When a work item is off queue, its high bits point to the last
+	 * pool it was on.  Cap at 31 bits and use the highest number to
+	 * indicate that no pool is associated.
+	 */
 	WORK_OFFQ_FLAG_BITS	= 1,
-	WORK_OFFQ_CPU_SHIFT	= WORK_OFFQ_FLAG_BASE + WORK_OFFQ_FLAG_BITS,
+	WORK_OFFQ_POOL_SHIFT	= WORK_OFFQ_FLAG_BASE + WORK_OFFQ_FLAG_BITS,
+	WORK_OFFQ_LEFT		= BITS_PER_LONG - WORK_OFFQ_POOL_SHIFT,
+	WORK_OFFQ_POOL_BITS	= WORK_OFFQ_LEFT <= 31 ? WORK_OFFQ_LEFT : 31,
+	WORK_OFFQ_POOL_NONE	= (1LU << WORK_OFFQ_POOL_BITS) - 1,
 
 	/* convenience constants */
 	WORK_STRUCT_FLAG_MASK	= (1UL << WORK_STRUCT_FLAG_BITS) - 1,
 	WORK_STRUCT_WQ_DATA_MASK = ~WORK_STRUCT_FLAG_MASK,
-	WORK_STRUCT_NO_CPU	= (unsigned long)WORK_CPU_NONE << WORK_OFFQ_CPU_SHIFT,
+	WORK_STRUCT_NO_POOL	= (unsigned long)WORK_OFFQ_POOL_NONE << WORK_OFFQ_POOL_SHIFT,
 
 	/* bit mask for work_busy() return values */
 	WORK_BUSY_PENDING	= 1 << 0,
@@ -95,13 +101,16 @@ struct work_struct {
 #endif
 };
 
-#define WORK_DATA_INIT()	ATOMIC_LONG_INIT(WORK_STRUCT_NO_CPU)
+#define WORK_DATA_INIT()	ATOMIC_LONG_INIT(WORK_STRUCT_NO_POOL)
 #define WORK_DATA_STATIC_INIT()	\
-	ATOMIC_LONG_INIT(WORK_STRUCT_NO_CPU | WORK_STRUCT_STATIC)
+	ATOMIC_LONG_INIT(WORK_STRUCT_NO_POOL | WORK_STRUCT_STATIC)
 
 struct delayed_work {
 	struct work_struct work;
 	struct timer_list timer;
+
+	/* target workqueue and CPU ->timer uses to queue ->work */
+	struct workqueue_struct *wq;
 	int cpu;
 };
 
@@ -133,26 +142,21 @@ struct execute_work {
 	__WORK_INIT_LOCKDEP_MAP(#n, &(n))				\
 	}
 
-#define __DELAYED_WORK_INITIALIZER(n, f) {				\
+#define __DELAYED_WORK_INITIALIZER(n, f, tflags) {			\
 	.work = __WORK_INITIALIZER((n).work, (f)),			\
-	.timer = TIMER_INITIALIZER(delayed_work_timer_fn,		\
-				0, (unsigned long)&(n)),		\
-	}
-
-#define __DEFERRED_WORK_INITIALIZER(n, f) {				\
-	.work = __WORK_INITIALIZER((n).work, (f)),			\
-	.timer = TIMER_DEFERRED_INITIALIZER(delayed_work_timer_fn,	\
-				0, (unsigned long)&(n)),		\
+	.timer = __TIMER_INITIALIZER(delayed_work_timer_fn,		\
+				     0, (unsigned long)&(n),		\
+				     (tflags) | TIMER_IRQSAFE),		\
 	}
 
 #define DECLARE_WORK(n, f)						\
 	struct work_struct n = __WORK_INITIALIZER(n, f)
 
 #define DECLARE_DELAYED_WORK(n, f)					\
-	struct delayed_work n = __DELAYED_WORK_INITIALIZER(n, f)
+	struct delayed_work n = __DELAYED_WORK_INITIALIZER(n, f, 0)
 
-#define DECLARE_DEFERRED_WORK(n, f)					\
-	struct delayed_work n = __DEFERRED_WORK_INITIALIZER(n, f)
+#define DECLARE_DEFERRABLE_WORK(n, f)					\
+	struct delayed_work n = __DELAYED_WORK_INITIALIZER(n, f, TIMER_DEFERRABLE)
 
 /*
  * initialize a work item's function pointer
@@ -216,29 +220,34 @@ static inline unsigned int work_static(struct work_struct *work) { return 0; }
 		__INIT_WORK((_work), (_func), 1);			\
 	} while (0)
 
-#define INIT_DELAYED_WORK(_work, _func)					\
+#define __INIT_DELAYED_WORK(_work, _func, _tflags)			\
 	do {								\
 		INIT_WORK(&(_work)->work, (_func));			\
-		init_timer(&(_work)->timer);				\
-		(_work)->timer.function = delayed_work_timer_fn;	\
-		(_work)->timer.data = (unsigned long)(_work);		\
+		__setup_timer(&(_work)->timer, delayed_work_timer_fn,	\
+			      (unsigned long)(_work),			\
+			      (_tflags) | TIMER_IRQSAFE);		\
 	} while (0)
 
-#define INIT_DELAYED_WORK_ONSTACK(_work, _func)				\
+#define __INIT_DELAYED_WORK_ONSTACK(_work, _func, _tflags)		\
 	do {								\
 		INIT_WORK_ONSTACK(&(_work)->work, (_func));		\
-		init_timer_on_stack(&(_work)->timer);			\
-		(_work)->timer.function = delayed_work_timer_fn;	\
-		(_work)->timer.data = (unsigned long)(_work);		\
+		__setup_timer_on_stack(&(_work)->timer,			\
+				       delayed_work_timer_fn,		\
+				       (unsigned long)(_work),		\
+				       (_tflags) | TIMER_IRQSAFE);	\
 	} while (0)
 
-#define INIT_DELAYED_WORK_DEFERRABLE(_work, _func)			\
-	do {								\
-		INIT_WORK(&(_work)->work, (_func));			\
-		init_timer_deferrable(&(_work)->timer);			\
-		(_work)->timer.function = delayed_work_timer_fn;	\
-		(_work)->timer.data = (unsigned long)(_work);		\
-	} while (0)
+#define INIT_DELAYED_WORK(_work, _func)					\
+	__INIT_DELAYED_WORK(_work, _func, 0)
+
+#define INIT_DELAYED_WORK_ONSTACK(_work, _func)				\
+	__INIT_DELAYED_WORK_ONSTACK(_work, _func, 0)
+
+#define INIT_DEFERRABLE_WORK(_work, _func)				\
+	__INIT_DELAYED_WORK(_work, _func, TIMER_DEFERRABLE)
+
+#define INIT_DEFERRABLE_WORK_ONSTACK(_work, _func)			\
+	__INIT_DELAYED_WORK_ONSTACK(_work, _func, TIMER_DEFERRABLE)
 
 /**
  * work_pending - Find out whether a work item is currently pending
@@ -309,6 +318,8 @@ extern struct workqueue_struct *system_wq;
 extern struct workqueue_struct *system_long_wq;
 extern struct workqueue_struct *system_unbound_wq;
 extern struct workqueue_struct *system_freezable_wq;
+extern struct workqueue_struct *system_power_efficient_wq;
+extern struct workqueue_struct *system_freezable_power_efficient_wq;
 
 static inline struct workqueue_struct *__system_nrt_wq(void)
 {
@@ -426,7 +437,6 @@ extern bool cancel_delayed_work_sync(struct delayed_work *dwork);
 extern void workqueue_set_max_active(struct workqueue_struct *wq,
 				     int max_active);
 extern bool workqueue_congested(unsigned int cpu, struct workqueue_struct *wq);
-extern unsigned int work_cpu(struct work_struct *work);
 extern unsigned int work_busy(struct work_struct *work);
 
 /*
