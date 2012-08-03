@@ -1335,12 +1335,7 @@ EXPORT_SYMBOL_GPL(queue_work_on);
  */
 bool queue_work(struct workqueue_struct *wq, struct work_struct *work)
 {
-	bool ret;
-
-	ret = queue_work_on(get_cpu(), wq, work);
-	put_cpu();
-
-	return ret;
+	return queue_work_on(WORK_CPU_UNBOUND, wq, work);
 }
 EXPORT_SYMBOL_GPL(queue_work);
 
@@ -1351,7 +1346,7 @@ void delayed_work_timer_fn(unsigned long __data)
 
 	local_irq_disable();
 	if (cwq != NULL)
-		__queue_work(smp_processor_id(), cwq->wq, &dwork->work);
+		__queue_work(WORK_CPU_UNBOUND, cwq->wq, &dwork->work);
 	local_irq_enable();
 }
 EXPORT_SYMBOL_GPL(delayed_work_timer_fn);
@@ -1495,7 +1490,7 @@ bool queue_delayed_work_on(int cpu, struct workqueue_struct *wq,
 		ret = try_to_grab_pending(&dwork->work, true, &flags);
 	} while (unlikely(ret == -EAGAIN));
 
-		if (unlikely(cpu >= 0))
+		if (unlikely(cpu != WORK_CPU_UNBOUND))
 			add_timer_on(timer, cpu);
 		else
 			add_timer(timer);
@@ -1536,7 +1531,7 @@ bool queue_delayed_work(struct workqueue_struct *wq,
 	if (delay == 0)
 		return queue_work(wq, &dwork->work);
 
-	return queue_delayed_work_on(-1, wq, dwork, delay);
+	return queue_delayed_work_on(WORK_CPU_UNBOUND, wq, dwork, delay);
 }
 EXPORT_SYMBOL_GPL(queue_delayed_work);
 
@@ -3010,7 +3005,7 @@ bool flush_delayed_work(struct delayed_work *dwork)
 {
 	local_irq_disable();
 	if (del_timer_sync(&dwork->timer))
-		__queue_work(dwork->cpu,
+		__queue_work(WORK_CPU_UNBOUND,
 			     get_work_cwq(&dwork->work)->wq, &dwork->work);
 	local_irq_enable();
 	return flush_work(&dwork->work);
@@ -3033,7 +3028,7 @@ bool cancel_delayed_work(struct delayed_work *dwork)
 {
 	local_irq_disable();
 	if (del_timer_sync(&dwork->timer))
-		__queue_work(raw_smp_processor_id(),
+		__queue_work(WORK_CPU_UNBOUND,
 			     get_work_cwq(&dwork->work)->wq, &dwork->work);
 	local_irq_enable();
 	return flush_work_sync(&dwork->work);
