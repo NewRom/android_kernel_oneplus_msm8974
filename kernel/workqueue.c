@@ -1447,6 +1447,9 @@ EXPORT_SYMBOL_GPL(queue_delayed_work_on);
  * @dwork: work to queue
  * @delay: number of jiffies to wait before queueing
  *
+ * Returns %false if @work was already on a queue, %true otherwise.  If
+ * @delay is zero and @dwork is idle, it will be scheduled for immediate
+ * execution.
  */
 bool queue_delayed_work_on(int cpu, struct workqueue_struct *wq,
 			   struct delayed_work *dwork, unsigned long delay)
@@ -1455,6 +1458,9 @@ bool queue_delayed_work_on(int cpu, struct workqueue_struct *wq,
 	struct work_struct *work = &dwork->work;
 	bool ret = false;
 	unsigned long flags;
+
+	if (!delay)
+		return queue_work_on(cpu, wq, &dwork->work);
 
 	/* read the comment in __queue_work() */
 	local_irq_save(flags);
@@ -1523,14 +1529,11 @@ EXPORT_SYMBOL_GPL(mod_delayed_work);
  * @dwork: delayable work to queue
  * @delay: number of jiffies to wait before queueing
  *
- * Returns %false if @work was already on a queue, %true otherwise.
+ * Equivalent to queue_delayed_work_on() but tries to use the local CPU.
  */
 bool queue_delayed_work(struct workqueue_struct *wq,
 			struct delayed_work *dwork, unsigned long delay)
 {
-	if (delay == 0)
-		return queue_work(wq, &dwork->work);
-
 	return queue_delayed_work_on(WORK_CPU_UNBOUND, wq, dwork, delay);
 }
 EXPORT_SYMBOL_GPL(queue_delayed_work);
