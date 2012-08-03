@@ -535,11 +535,6 @@ static int work_next_color(int color)
  * contain the pointer to the queued cwq.  Once execution starts, the flag
  * is cleared and the high bits contain OFFQ flags and CPU number.
  *
- * set_work_cwq(), set_work_cpu_and_clear_pending(), mark_work_canceling()
- * and clear_work_data() can be used to set the cwq, cpu or clear
- * work->data.  These functions should only be called while the work is
- * owned - ie. while the PENDING bit is set.
- *
  * set_work_cwq(), set_work_cpu_and_clear_pending() and clear_work_data()
  * can be used to set the cwq, cpu or clear work->data.  These functions
  * should only be called while the work is owned - ie. while the PENDING
@@ -568,7 +563,7 @@ static void set_work_cwq(struct work_struct *work,
 static void set_work_cpu_and_clear_pending(struct work_struct *work,
 					   unsigned int cpu)
 {
-	set_work_data(work, cpu << WORK_STRUCT_FLAG_BITS, 0);
+	set_work_data(work, (unsigned long)cpu << WORK_OFFQ_CPU_SHIFT, 0);
 }
 
 static void clear_work_data(struct work_struct *work)
@@ -3775,6 +3770,10 @@ static int __init init_workqueues(void)
 {
 	unsigned int cpu;
 	int i;
+
+	/* make sure we have enough bits for OFFQ CPU number */
+	BUILD_BUG_ON((1LU << (BITS_PER_LONG - WORK_OFFQ_CPU_SHIFT)) <
+		     WORK_CPU_LAST);
 
 	/* make sure we have enough bits for OFFQ CPU number */
 	BUILD_BUG_ON((1LU << (BITS_PER_LONG - WORK_OFFQ_CPU_SHIFT)) <
