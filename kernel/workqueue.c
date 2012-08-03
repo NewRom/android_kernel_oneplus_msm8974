@@ -1292,19 +1292,8 @@ static void __queue_delayed_work(int cpu, struct workqueue_struct *wq,
 
 	WARN_ON_ONCE(timer->function != delayed_work_timer_fn ||
 		     timer->data != (unsigned long)dwork);
-	WARN_ON_ONCE(timer_pending(timer));
-	WARN_ON_ONCE(!list_empty(&work->entry));
-
-	/*
-	 * If @delay is 0, queue @dwork->work immediately.  This is for
-	 * both optimization and correctness.  The earliest @timer can
-	 * expire is on the closest next tick and delayed_work users depend
-	 * on that there's no such delay when @delay is 0.
-	 */
-	if (!delay) {
-		__queue_work(cpu, wq, &dwork->work);
-		return;
-	}
+	BUG_ON(timer_pending(timer));
+	BUG_ON(!list_empty(&work->entry));
 
 	timer_stats_timer_set_start_info(&dwork->timer);
 
@@ -1316,15 +1305,9 @@ static void __queue_delayed_work(int cpu, struct workqueue_struct *wq,
 	if (!(wq->flags & WQ_UNBOUND)) {
 		struct global_cwq *gcwq = get_work_gcwq(work);
 
-		/*
-		 * If we cannot get the last gcwq from @work directly,
-		 * select the last CPU such that it avoids unnecessarily
-		 * triggering non-reentrancy check in __queue_work().
-		 */
-		lcpu = cpu;
-		if (gcwq)
+		if (gcwq && gcwq->cpu != WORK_CPU_UNBOUND)
 			lcpu = gcwq->cpu;
-		if (lcpu == WORK_CPU_UNBOUND)
+		else
 			lcpu = raw_smp_processor_id();
 	} else {
 		lcpu = WORK_CPU_UNBOUND;
@@ -1332,7 +1315,6 @@ static void __queue_delayed_work(int cpu, struct workqueue_struct *wq,
 
 	set_work_cwq(work, get_cwq(lcpu, wq), 0);
 
-	dwork->cpu = cpu;
 	timer->expires = jiffies + delay;
 
 	if (unlikely(cpu != WORK_CPU_UNBOUND))
@@ -1359,38 +1341,6 @@ bool queue_delayed_work_on(int cpu, struct workqueue_struct *wq,
 	bool ret = false;
 	unsigned long flags;
 
-	/* read the comment in __queue_work() */
-	local_irq_save(flags);
-
-	if (!test_and_set_bit(WORK_STRUCT_PENDING_BIT, work_data_bits(work))) {
-		__queue_delayed_work(cpu, wq, dwork, delay);
-		ret = true;
-	}
-
-	local_irq_restore(flags);
-	return ret;
-}
-EXPORT_SYMBOL_GPL(queue_delayed_work_on);
-
-/**
- * queue_delayed_work_on - queue work on specific CPU after delay
- * @cpu: CPU number to execute work on
- * @wq: workqueue to use
- * @dwork: work to queue
- * @delay: number of jiffies to wait before queueing
- *
- * Returns %false if @work was already on a queue, %true otherwise.  If
- * @delay is zero and @dwork is idle, it will be scheduled for immediate
- * execution.
- */
-bool queue_delayed_work_on(int cpu, struct workqueue_struct *wq,
-			   struct delayed_work *dwork, unsigned long delay)
-{
-	struct timer_list *timer = &dwork->timer;
-	struct work_struct *work = &dwork->work;
-	bool ret = false;
-	unsigned long flags;
-
 	if (!delay)
 		return queue_work_on(cpu, wq, &dwork->work);
 
@@ -1398,40 +1348,7 @@ bool queue_delayed_work_on(int cpu, struct workqueue_struct *wq,
 	local_irq_save(flags);
 
 	if (!test_and_set_bit(WORK_STRUCT_PENDING_BIT, work_data_bits(work))) {
-		unsigned int lcpu;
-
-		WARN_ON_ONCE(timer->function != delayed_work_timer_fn ||
-			     timer->data != (unsigned long)dwork);
-		WARN_ON_ONCE(timer_pending(timer));
-		WARN_ON_ONCE(!list_empty(&work->entry));
-
-		timer_stats_timer_set_start_info(&dwork->timer);
-
-		/*
-		 * This stores cwq for the moment, for the timer_fn.
-		 * Note that the work's gcwq is preserved to allow
-		 * reentrance detection for delayed works.
-		 */
-		if (!(wq->flags & WQ_UNBOUND)) {
-			struct global_cwq *gcwq = get_work_gcwq(work);
-
-			if (gcwq && gcwq->cpu != WORK_CPU_UNBOUND)
-				lcpu = gcwq->cpu;
-			else
-				lcpu = raw_smp_processor_id();
-		} else
-			lcpu = WORK_CPU_UNBOUND;
-
-		set_work_cwq(work, get_cwq(lcpu, wq), 0);
-
-	do {
-		ret = try_to_grab_pending(&dwork->work, true, &flags);
-	} while (unlikely(ret == -EAGAIN));
-
-		if (unlikely(cpu != WORK_CPU_UNBOUND))
-			add_timer_on(timer, cpu);
-		else
-			add_timer(timer);
+		__queue_delayed_work(cpu, wq, dwork, delay);
 		ret = true;
 	}
 
