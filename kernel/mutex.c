@@ -756,10 +756,10 @@ __mutex_unlock_slowpath(atomic_t *lock_count)
  * mutex_lock_interruptible() and mutex_trylock().
  */
 static noinline int __sched
-__mutex_lock_killable_slowpath(atomic_t *lock_count);
+__mutex_lock_killable_slowpath(struct mutex *lock);
 
 static noinline int __sched
-__mutex_lock_interruptible_slowpath(atomic_t *lock_count);
+__mutex_lock_interruptible_slowpath(struct mutex *lock);
 
 /**
  * mutex_lock_interruptible - acquire the mutex, interruptible
@@ -777,12 +777,12 @@ int __sched mutex_lock_interruptible(struct mutex *lock)
 	int ret;
 
 	might_sleep();
-	ret =  __mutex_fastpath_lock_retval
-			(&lock->count, __mutex_lock_interruptible_slowpath);
-	if (!ret)
+	ret =  __mutex_fastpath_lock_retval(&lock->count);
+	if (likely(!ret)) {
 		mutex_set_owner(lock);
-
-	return ret;
+		return 0;
+	} else
+		return __mutex_lock_interruptible_slowpath(lock);
 }
 
 EXPORT_SYMBOL(mutex_lock_interruptible);
@@ -792,12 +792,12 @@ int __sched mutex_lock_killable(struct mutex *lock)
 	int ret;
 
 	might_sleep();
-	ret = __mutex_fastpath_lock_retval
-			(&lock->count, __mutex_lock_killable_slowpath);
-	if (!ret)
+	ret = __mutex_fastpath_lock_retval(&lock->count);
+	if (likely(!ret)) {
 		mutex_set_owner(lock);
-
-	return ret;
+		return 0;
+	} else
+		return __mutex_lock_killable_slowpath(lock);
 }
 EXPORT_SYMBOL(mutex_lock_killable);
 
@@ -811,19 +811,15 @@ __mutex_lock_slowpath(atomic_t *lock_count)
 }
 
 static noinline int __sched
-__mutex_lock_killable_slowpath(atomic_t *lock_count)
+__mutex_lock_killable_slowpath(struct mutex *lock)
 {
-	struct mutex *lock = container_of(lock_count, struct mutex, count);
-
 	return __mutex_lock_common(lock, TASK_KILLABLE, 0,
 				   NULL, _RET_IP_, NULL, 0);
 }
 
 static noinline int __sched
-__mutex_lock_interruptible_slowpath(atomic_t *lock_count)
+__mutex_lock_interruptible_slowpath(struct mutex *lock)
 {
-	struct mutex *lock = container_of(lock_count, struct mutex, count);
-
 	return __mutex_lock_common(lock, TASK_INTERRUPTIBLE, 0,
 				   NULL, _RET_IP_, NULL, 0);
 }
