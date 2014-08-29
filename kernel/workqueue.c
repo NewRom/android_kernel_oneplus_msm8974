@@ -910,29 +910,6 @@ static struct worker *__find_worker_executing_work(struct global_cwq *gcwq,
 }
 
 /**
- * find_worker_executing_work - find worker which is executing a work
- * @gcwq: gcwq of interest
- * @work: work to find worker for
- *
- * Find a worker which is executing @work on @gcwq.  This function is
- * identical to __find_worker_executing_work() except that this
- * function calculates @bwh itself.
- *
- * CONTEXT:
- * spin_lock_irq(gcwq->lock).
- *
- * RETURNS:
- * Pointer to worker which is executing @work if found, NULL
- * otherwise.
- */
-static struct worker *find_worker_executing_work(struct global_cwq *gcwq,
-						 struct work_struct *work)
-{
-	return __find_worker_executing_work(gcwq, busy_worker_head(gcwq, work),
-					    work);
-}
-
-/**
  * move_linked_works - move linked works to a list
  * @work: start of series of works to be scheduled
  * @head: target list to append @work to
@@ -1040,49 +1017,15 @@ static void cwq_dec_nr_in_flight(struct cpu_workqueue_struct *cwq, int color,
 		complete(&cwq->wq->first_flusher->done);
 }
 
-/**
- * try_to_grab_pending - steal work item from worklist and disable irq
- * @work: work item to steal
- * @is_dwork: @work is a delayed_work
- * @flags: place to store irq state
- *
- * Try to grab PENDING bit of @work.  This function can handle @work in any
- * stable state - idle, on timer or on worklist.  Return values are
- *
- *  1		if @work was pending and we successfully stole PENDING
- *  0		if @work was idle and we claimed PENDING
- *  -EAGAIN	if PENDING couldn't be grabbed at the moment, safe to busy-retry
- *  -ENOENT	if someone else is canceling @work, this state may persist
- *		for arbitrarily long
- *
- * On >= 0 return, the caller owns @work's PENDING bit.  To avoid getting
- * preempted while holding PENDING and @work off queue, preemption must be
- * disabled on entry.  This ensures that we don't return -EAGAIN while
- * another task is preempted in this function.
- *
- * On successful return, >= 0, irq is disabled and the caller is
- * responsible for releasing it using local_irq_restore(*@flags).
- *
- * This function is safe to call from any context other than IRQ handler.
- * An IRQ handler may run on top of delayed_work_timer_fn() which can make
- * this function return -EAGAIN perpetually.
+/*
+ * Upon a successful return (>= 0), the caller "owns" WORK_STRUCT_PENDING bit,
+ * so this work can't be re-armed in any way.
  */
-static int try_to_grab_pending(struct work_struct *work, bool is_dwork,
-			       unsigned long *flags)
+static int try_to_grab_pending(struct work_struct *work)
 {
 	struct global_cwq *gcwq;
+	int ret = -1;
 
-	local_irq_save(*flags);
-
-	/* try to steal the timer if it exists */
-	if (is_dwork) {
-		struct delayed_work *dwork = to_delayed_work(work);
-
-		if (likely(del_timer(&dwork->timer)))
-			return 1;
-	}
-
-	/* try to claim PENDING the normal way */
 	if (!test_and_set_bit(WORK_STRUCT_PENDING_BIT, work_data_bits(work)))
 		return 0;
 
@@ -1092,9 +1035,9 @@ static int try_to_grab_pending(struct work_struct *work, bool is_dwork,
 	 */
 	gcwq = get_work_gcwq(work);
 	if (!gcwq)
-		goto fail;
+		return ret;
 
-	spin_lock(&gcwq->lock);
+	spin_lock_irq(&gcwq->lock);
 	if (!list_empty(&work->entry)) {
 		/*
 		 * This work is queued, but perhaps we locked the wrong gcwq.
@@ -1120,18 +1063,12 @@ static int try_to_grab_pending(struct work_struct *work, bool is_dwork,
 			cwq_dec_nr_in_flight(get_work_cwq(work),
 				get_work_color(work),
 				*work_data_bits(work) & WORK_STRUCT_DELAYED);
-
-			spin_unlock(&gcwq->lock);
-			return 1;
+			ret = 1;
 		}
 	}
-	spin_unlock(&gcwq->lock);
-fail:
-	local_irq_restore(*flags);
-	if (work_is_canceling(work))
-		return -ENOENT;
-	cpu_relax();
-	return -EAGAIN;
+	spin_unlock_irq(&gcwq->lock);
+
+	return ret;
 }
 
 /**
@@ -2126,44 +2063,8 @@ static bool manage_workers(struct worker *worker)
 	struct worker_pool *pool = worker->pool;
 	bool ret = false;
 
-	if (pool->flags & POOL_MANAGING_WORKERS)
+	if (!mutex_trylock(&pool->manager_mutex))
 		return ret;
-
-	pool->flags |= POOL_MANAGING_WORKERS;
-
-	/*
-	 * To simplify both worker management and CPU hotplug, hold off
-	 * management while hotplug is in progress.  CPU hotplug path can't
-	 * grab %POOL_MANAGING_WORKERS to achieve this because that can
-	 * lead to idle worker depletion (all become busy thinking someone
-	 * else is managing) which in turn can result in deadlock under
-	 * extreme circumstances.  Use @pool->assoc_mutex to synchronize
-	 * manager against CPU hotplug.
-	 *
-	 * assoc_mutex would always be free unless CPU hotplug is in
-	 * progress.  trylock first without dropping @gcwq->lock.
-	 */
-	if (unlikely(!mutex_trylock(&pool->assoc_mutex))) {
-		spin_unlock_irq(&pool->gcwq->lock);
-		mutex_lock(&pool->assoc_mutex);
-		/*
-		 * CPU hotplug could have happened while we were waiting
-		 * for assoc_mutex.  Hotplug itself can't handle us
-		 * because manager isn't either on idle or busy list, and
-		 * @gcwq's state and ours could have deviated.
-		 *
-		 * As hotplug is now excluded via assoc_mutex, we can
-		 * simply try to bind.  It will succeed or fail depending
-		 * on @gcwq's current state.  Try it and adjust
-		 * %WORKER_UNBOUND accordingly.
-		 */
-		if (worker_maybe_bind_and_lock(worker))
-			worker->flags &= ~WORKER_UNBOUND;
-		else
-			worker->flags |= WORKER_UNBOUND;
-
-		ret = true;
-	}
 
 	pool->flags &= ~POOL_MANAGE_WORKERS;
 
@@ -2174,8 +2075,7 @@ static bool manage_workers(struct worker *worker)
 	ret |= maybe_destroy_workers(pool);
 	ret |= maybe_create_worker(pool);
 
-	pool->flags &= ~POOL_MANAGING_WORKERS;
-	mutex_unlock(&pool->assoc_mutex);
+	mutex_unlock(&pool->manager_mutex);
 	return ret;
 }
 
@@ -2941,10 +2841,13 @@ bool flush_work(struct work_struct *work)
 	} else {
 		return false;
 	}
-}
-EXPORT_SYMBOL_GPL(flush_work);
 
-static bool __cancel_work_timer(struct work_struct *work, bool is_dwork)
+	return pending || waited;
+}
+EXPORT_SYMBOL_GPL(flush_work_sync);
+
+static bool __cancel_work_timer(struct work_struct *work,
+				struct timer_list* timer)
 {
 	unsigned long flags;
 	int ret;
