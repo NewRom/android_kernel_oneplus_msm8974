@@ -1317,16 +1317,11 @@ bool queue_work_on(int cpu, struct workqueue_struct *wq,
 		   struct work_struct *work)
 {
 	bool ret = false;
-	unsigned long flags;
-
-	local_irq_save(flags);
 
 	if (!test_and_set_bit(WORK_STRUCT_PENDING_BIT, work_data_bits(work))) {
 		__queue_work(cpu, wq, work);
 		ret = true;
 	}
-
-	local_irq_restore(flags);
 	return ret;
 }
 EXPORT_SYMBOL_GPL(queue_work_on);
@@ -1343,7 +1338,12 @@ EXPORT_SYMBOL_GPL(queue_work_on);
  */
 bool queue_work(struct workqueue_struct *wq, struct work_struct *work)
 {
-	return queue_work_on(WORK_CPU_UNBOUND, wq, work);
+	bool ret;
+
+	ret = queue_work_on(get_cpu(), wq, work);
+	put_cpu();
+
+	return ret;
 }
 EXPORT_SYMBOL_GPL(queue_work);
 
@@ -1448,51 +1448,56 @@ bool queue_delayed_work_on(int cpu, struct workqueue_struct *wq,
 EXPORT_SYMBOL_GPL(queue_delayed_work_on);
 
 /**
- * queue_delayed_work - queue work on a workqueue after delay
- * @wq: workqueue to use
- * @dwork: delayable work to queue
- * @delay: number of jiffies to wait before queueing
- *
- * Equivalent to queue_delayed_work_on() but tries to use the local CPU.
- */
-bool queue_delayed_work(struct workqueue_struct *wq,
-			struct delayed_work *dwork, unsigned long delay)
-{
-	return queue_delayed_work_on(WORK_CPU_UNBOUND, wq, dwork, delay);
-}
-EXPORT_SYMBOL_GPL(queue_delayed_work);
-
-/**
- * mod_delayed_work_on - modify delay of or queue a delayed work on specific CPU
+ * queue_delayed_work_on - queue work on specific CPU after delay
  * @cpu: CPU number to execute work on
  * @wq: workqueue to use
  * @dwork: work to queue
  * @delay: number of jiffies to wait before queueing
  *
- * If @dwork is idle, equivalent to queue_delayed_work_on(); otherwise,
- * modify @dwork's timer so that it expires after @delay.  If @delay is
- * zero, @work is guaranteed to be scheduled immediately regardless of its
- * current state.
- *
- * Returns %false if @dwork was idle and queued, %true if @dwork was
- * pending and its timer was modified.
- *
- * This function is safe to call from any context other than IRQ handler.
- * See try_to_grab_pending() for details.
  */
-bool mod_delayed_work_on(int cpu, struct workqueue_struct *wq,
-			 struct delayed_work *dwork, unsigned long delay)
+bool queue_delayed_work_on(int cpu, struct workqueue_struct *wq,
+			   struct delayed_work *dwork, unsigned long delay)
 {
-	unsigned long flags;
-	int ret;
+	struct timer_list *timer = &dwork->timer;
+	struct work_struct *work = &dwork->work;
+	bool ret = false;
+
+	if (!test_and_set_bit(WORK_STRUCT_PENDING_BIT, work_data_bits(work))) {
+		unsigned int lcpu;
+
+		WARN_ON_ONCE(timer->function != delayed_work_timer_fn ||
+			     timer->data != (unsigned long)dwork);
+		WARN_ON_ONCE(timer_pending(timer));
+		WARN_ON_ONCE(!list_empty(&work->entry));
+
+		timer_stats_timer_set_start_info(&dwork->timer);
+
+		/*
+		 * This stores cwq for the moment, for the timer_fn.
+		 * Note that the work's gcwq is preserved to allow
+		 * reentrance detection for delayed works.
+		 */
+		if (!(wq->flags & WQ_UNBOUND)) {
+			struct global_cwq *gcwq = get_work_gcwq(work);
+
+			if (gcwq && gcwq->cpu != WORK_CPU_UNBOUND)
+				lcpu = gcwq->cpu;
+			else
+				lcpu = raw_smp_processor_id();
+		} else
+			lcpu = WORK_CPU_UNBOUND;
+
+		set_work_cwq(work, get_cwq(lcpu, wq), 0);
 
 	do {
 		ret = try_to_grab_pending(&dwork->work, true, &flags);
 	} while (unlikely(ret == -EAGAIN));
 
-	if (likely(ret >= 0)) {
-		__queue_delayed_work(cpu, wq, dwork, delay);
-		local_irq_restore(flags);
+		if (unlikely(cpu >= 0))
+			add_timer_on(timer, cpu);
+		else
+			add_timer(timer);
+		ret = true;
 	}
 
 	/* -ENOENT from try_to_grab_pending() becomes %true */
@@ -1514,6 +1519,24 @@ bool mod_delayed_work(struct workqueue_struct *wq, struct delayed_work *dwork,
 	return mod_delayed_work_on(WORK_CPU_UNBOUND, wq, dwork, delay);
 }
 EXPORT_SYMBOL_GPL(mod_delayed_work);
+
+/**
+ * queue_delayed_work - queue work on a workqueue after delay
+ * @wq: workqueue to use
+ * @dwork: delayable work to queue
+ * @delay: number of jiffies to wait before queueing
+ *
+ * Returns %false if @work was already on a queue, %true otherwise.
+ */
+bool queue_delayed_work(struct workqueue_struct *wq,
+			struct delayed_work *dwork, unsigned long delay)
+{
+	if (delay == 0)
+		return queue_work(wq, &dwork->work);
+
+	return queue_delayed_work_on(-1, wq, dwork, delay);
+}
+EXPORT_SYMBOL_GPL(queue_delayed_work);
 
 /**
  * worker_enter_idle - enter idle state
