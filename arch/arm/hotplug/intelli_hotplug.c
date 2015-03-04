@@ -19,11 +19,11 @@
 #include <linux/input.h>
 #include <linux/kobject.h>
 #include <linux/fb.h>
-#include <linux/notifier.h>
+#include <linux/cpufreq.h>
 
 #define INTELLI_PLUG			"intelli_plug"
 #define INTELLI_PLUG_MAJOR_VERSION	5
-#define INTELLI_PLUG_MINOR_VERSION	2
+#define INTELLI_PLUG_MINOR_VERSION	3
 
 #define DEF_SAMPLING_MS			30
 #define RESUME_SAMPLING_MS		HZ / 10
@@ -34,9 +34,14 @@
 #define DEFAULT_MIN_CPUS_ONLINE		1
 #define DEFAULT_MAX_CPUS_ONLINE		NR_CPUS
 #define DEFAULT_NR_FSHIFT		DEFAULT_MAX_CPUS_ONLINE - 1
+<<<<<<< HEAD:arch/arm/hotplug/intelli_plug.c
 #define DEFAULT_DOWN_LOCK_DUR		1000
 #define DEFAULT_SUSPEND_DEFER_TIME	10
 
+=======
+#define DEFAULT_DOWN_LOCK_DUR		2000
+#define DEFAULT_SUSPEND_DEFER_TIME	10
+>>>>>>> 6003127... HOTPLUGS UPDATE: Thanks to @neobuddy89 we now will use MDSS notifiers.:arch/arm/hotplug/intelli_hotplug.c
 
 #define CAPACITY_RESERVE		50
 #if defined(CONFIG_ARCH_MSM8960) || defined(CONFIG_ARCH_APQ8064) || \
@@ -276,8 +281,15 @@ static void __ref cpu_up_down_work(struct work_struct *work)
 
 static void intelli_plug_work_fn(struct work_struct *work)
 {
+<<<<<<< HEAD:arch/arm/hotplug/intelli_plug.c
 	if (hotplug_suspended == true)
 		return;
+=======
+	if (hotplug_suspended) {
+		dprintk("intelli_plug is suspended!\n");
+		return;
+	}
+>>>>>>> 6003127... HOTPLUGS UPDATE: Thanks to @neobuddy89 we now will use MDSS notifiers.:arch/arm/hotplug/intelli_hotplug.c
 
 	target_cpus = calculate_thread_stats();
 	queue_work_on(0, intelliplug_wq, &up_down_work);
@@ -295,7 +307,7 @@ static void intelli_plug_suspend(struct work_struct *work)
 		min_cpus_online_res = min_cpus_online;
 		min_cpus_online = 1;
 		max_cpus_online_res = max_cpus_online;
-		max_cpus_online = 2;
+		max_cpus_online = 1;
 		mutex_unlock(&intelli_plug_mutex);
 
 		/* Flush hotplug workqueue */
@@ -310,7 +322,7 @@ static void __ref intelli_plug_resume(struct work_struct *work)
 {
 	int cpu, required_reschedule = 0, required_wakeup = 0;
 
-	if (hotplug_suspended == true) {
+	if (hotplug_suspended) {
 		mutex_lock(&intelli_plug_mutex);
 		hotplug_suspended = false;
 		min_cpus_online = min_cpus_online_res;
@@ -342,7 +354,10 @@ static void __ref intelli_plug_resume(struct work_struct *work)
 }
 
 static void __intelli_plug_suspend(void)
+<<<<<<< HEAD:arch/arm/hotplug/intelli_plug.c
 
+=======
+>>>>>>> 6003127... HOTPLUGS UPDATE: Thanks to @neobuddy89 we now will use MDSS notifiers.:arch/arm/hotplug/intelli_hotplug.c
 {
 	if (atomic_read(&intelli_plug_active) == 0)
 		return;
@@ -355,7 +370,10 @@ static void __intelli_plug_suspend(void)
 				 msecs_to_jiffies(suspend_defer_time * 1000));
 }
 
+<<<<<<< HEAD:arch/arm/hotplug/intelli_plug.c
 
+=======
+>>>>>>> 6003127... HOTPLUGS UPDATE: Thanks to @neobuddy89 we now will use MDSS notifiers.:arch/arm/hotplug/intelli_hotplug.c
 static void __ref __intelli_plug_resume(void)
 {
 	int cpu;
@@ -391,14 +409,22 @@ static int fb_notifier_callback(struct notifier_block *self,
 		blank = evdata->data;
 		switch (*blank) {
 			case FB_BLANK_UNBLANK:
+<<<<<<< HEAD:arch/arm/hotplug/intelli_plug.c
 				//display on
+=======
+				/* display on */
+>>>>>>> 6003127... HOTPLUGS UPDATE: Thanks to @neobuddy89 we now will use MDSS notifiers.:arch/arm/hotplug/intelli_hotplug.c
 				__intelli_plug_resume();
 				break;
 			case FB_BLANK_POWERDOWN:
 			case FB_BLANK_HSYNC_SUSPEND:
 			case FB_BLANK_VSYNC_SUSPEND:
 			case FB_BLANK_NORMAL:
+<<<<<<< HEAD:arch/arm/hotplug/intelli_plug.c
 				//display off
+=======
+				/* display off */
+>>>>>>> 6003127... HOTPLUGS UPDATE: Thanks to @neobuddy89 we now will use MDSS notifiers.:arch/arm/hotplug/intelli_hotplug.c
 				__intelli_plug_suspend();
 				break;
 		}
@@ -412,7 +438,11 @@ static void intelli_plug_input_event(struct input_handle *handle,
 {
 	u64 now;
 
+<<<<<<< HEAD:arch/arm/hotplug/intelli_plug.c
 	if (hotplug_suspended == true)
+=======
+	if (hotplug_suspended)
+>>>>>>> 6003127... HOTPLUGS UPDATE: Thanks to @neobuddy89 we now will use MDSS notifiers.:arch/arm/hotplug/intelli_hotplug.c
 		return;
 
 	now = ktime_to_us(ktime_get());
@@ -517,6 +547,16 @@ static int __ref intelli_plug_start(void)
 		ret = -ENOMEM;
 		goto err_out;
 	}
+<<<<<<< HEAD:arch/arm/hotplug/intelli_plug.c
+=======
+
+	notif.notifier_call = fb_notifier_callback;
+	if (fb_register_client(&notif)) {
+		pr_err("%s: Failed to register FB notifier callback\n",
+			INTELLI_PLUG);
+		goto err_dev;
+	}
+>>>>>>> 6003127... HOTPLUGS UPDATE: Thanks to @neobuddy89 we now will use MDSS notifiers.:arch/arm/hotplug/intelli_hotplug.c
 
 	notif.notifier_call = fb_notifier_callback;
 	
@@ -535,7 +575,10 @@ static int __ref intelli_plug_start(void)
 		dl = &per_cpu(lock_info, cpu);
 		INIT_DELAYED_WORK(&dl->lock_rem, remove_down_lock);
 	}
+<<<<<<< HEAD:arch/arm/hotplug/intelli_plug.c
 
+=======
+>>>>>>> 6003127... HOTPLUGS UPDATE: Thanks to @neobuddy89 we now will use MDSS notifiers.:arch/arm/hotplug/intelli_hotplug.c
 	INIT_DELAYED_WORK(&suspend_work, intelli_plug_suspend);
 	INIT_WORK(&resume_work, intelli_plug_resume);
 
@@ -574,6 +617,7 @@ static void intelli_plug_stop(void)
 	flush_workqueue(intelliplug_wq);
 	cancel_work_sync(&up_down_work);
 	cancel_delayed_work_sync(&intelli_plug_work);
+<<<<<<< HEAD:arch/arm/hotplug/intelli_plug.c
 
 	mutex_destroy(&intelli_plug_mutex);
 
@@ -583,6 +627,14 @@ static void intelli_plug_stop(void)
 
 	destroy_workqueue(susp_wq);
 
+=======
+	mutex_destroy(&intelli_plug_mutex);
+	fb_unregister_client(&notif);
+	notif.notifier_call = NULL;
+
+	input_unregister_handler(&intelli_plug_input_handler);
+	destroy_workqueue(susp_wq);
+>>>>>>> 6003127... HOTPLUGS UPDATE: Thanks to @neobuddy89 we now will use MDSS notifiers.:arch/arm/hotplug/intelli_hotplug.c
 	destroy_workqueue(intelliplug_wq);
 }
 
