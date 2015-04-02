@@ -28,8 +28,13 @@
 #define MSM_LIMIT			"msm_limiter"
 #define LIMITER_ENABLED			1
 #define DEFAULT_SUSPEND_DEFER_TIME	10 
+<<<<<<< HEAD
 #define DEFAULT_SUSPEND_FREQUENCY	729600
 #define DEFAULT_RESUME_FREQUENCY	2457600
+=======
+#define DEFAULT_SUSPEND_FREQUENCY	1728000
+#define DEFAULT_RESUME_FREQUENCY	2265600
+>>>>>>> a908576... cpufreq: limiter: add frequency limiter driver
 #define DEFAULT_MIN_FREQUENCY		300000
 
 static unsigned int debug_mask = 0;
