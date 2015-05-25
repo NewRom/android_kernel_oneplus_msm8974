@@ -33,11 +33,6 @@ struct hotplug_cpuinfo {
 u64 prev_cpu_wall;
 u64 prev_cpu_idle;
 #endif
-#ifdef CONFIG_STATE_NOTIFIER
-#include <linux/state_notifier.h>
-#else
-#include <linux/fb.h>
-#endif
 
 unsigned int up_load;
 unsigned int down_load;
