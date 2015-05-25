@@ -3071,11 +3071,3 @@ config SPEED_LEVEL_INTERFACE
          Allow SPEED level to be shown into specific kernel apps
 
 endif
-
-config MSM_HOTPLUG
-	bool "MSM hotplug driver"
-	depends on HOTPLUG_CPU
-	default n
-	help
-	  The MSM hotplug driver controls on-/offlining of additional cores based
-	  on current cpu load.
