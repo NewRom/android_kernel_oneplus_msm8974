@@ -28,6 +28,12 @@
 #include <linux/input.h>
 #include <linux/jiffies.h>
 
+#ifdef CONFIG_STATE_NOTIFIER
+#include <linux/state_notifier.h>
+#else
+#include <linux/fb.h>
+#endif
+
 #define MAKO_HOTPLUG "mako_hotplug"
 
 #define DEFAULT_HOTPLUG_ENABLED 0
