@@ -252,7 +252,7 @@ KERNELFLAGS     = -pipe -DNDEBUG $(ALIGNED) $(CHIP) -fgcse-las -fgcse-lm -fgcse-
 
 
 # kernel configuration
-ALIGNED = -O2 -floop-flatten -floop-parallelize-all -ftree-loop-linear -floop-interchange -floop-strip-mine -floop-block -fgcse-las -ftree-slp-vectorize -ftree-vectorize -fpredictive-commoning
+ALIGNED = -O3 -floop-flatten -floop-parallelize-all -ftree-loop-linear -floop-interchange -floop-strip-mine -floop-block -fgcse-las -ftree-slp-vectorize -ftree-vectorize -fpredictive-commoning -mvectorize-with-neon-quad
 
 #Optimization for chip
 CHIP = -mcpu=cortex-a15 -mtune=cortex-a15 -mfpu=vfpv4 -mfpu=neon -marm -mfloat-abi=soft --param l1-cache-size=16 --param l2-cache-size=2048
