@@ -245,13 +245,47 @@ CONFIG_SHELL := $(shell if [ -x "$$BASH" ]; then echo $$BASH; \
 
 HOSTCC       = gcc
 HOSTCXX      = g++
-HOSTCFLAGS   = -Wall -Wmissing-prototypes -Wstrict-prototypes -O2 -fomit-frame-pointer
-HOSTCXXFLAGS = -O2
+HOSTCFLAGS = -Wall -Wmissing-prototypes -Wstrict-prototypes -fomit-frame-pointer $(ALIGNED)
+HOSTCXXFLAGS = $(ALIGNED)
+
+KERNELFLAGS     = -pipe -DNDEBUG $(ALIGNED) $(CHIP) -fgcse-las -fgcse-lm -fgcse-sm -fsched-spec-load -std=gnu89
+
+
+# kernel configuration
+ALIGNED = -O3 -floop-flatten -floop-parallelize-all -ftree-loop-linear -floop-interchange -floop-strip-mine -floop-block -fgcse-las -ftree-slp-vectorize -ftree-vectorize -fpredictive-commoning
+
+#Optimization for chip
+CHIP = -mcpu=cortex-a15 -mtune=cortex-a15 -mfpu=vfpv4 -mfpu=neon -marm -mfloat-abi=soft --param l1-cache-size=16 --param l2-cache-size=2048
+
+KBUILD_CFLAGS   := -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
+		   -fno-strict-aliasing -fno-common \
+		   -Werror-implicit-function-declaration \
+		   -Wno-format-security \
+		   -fno-delete-null-pointer-checks \
+		   $(CHIP) \
+                   $(ALIGNED)
+
+# O3 = -O2 -finline-functions, -funswitch-loops -fpredictive-commoning -fgcse-after-reload, -ftree-loop-vectorize, -ftree-loop-distribute-patterns, -ftree-slp-vectorize, -fvect-cost-model, -ftree-partial-pre and -fipa-cp-clone
+   
+# -Wno-unused
+KBUILD_CFLAGS	+= -Wno-unused
+# L1/L2 cache size parameters by @JustArchi
+KBUILD_CFLAGS	+= --param l1-cache-size=16 --param l2-cache-size=2048
+
+MODFLAGS	= $(KERNELFLAGS)
+CFLAGS_MODULE   = $(MODFLAGS)
+AFLAGS_MODULE   = $(MODFLAGS)
+LDFLAGS_MODULE  = -T $(srctree)/scripts/module-common.lds
+CFLAGS_KERNEL	= $(KERNELFLAGS) -fpredictive-commoning
+AFLAGS_KERNEL	= $(KERNELFLAGS)
+CFLAGS_GCOV	= -fprofile-arcs -ftest-coverage
+
 
 # Decide whether to build built-in, modular, or both.
 # Normally, just do built-in.
 
 KBUILD_MODULES :=
+
 KBUILD_BUILTIN := 1
 
 #	If we have only "make modules", don't compile built-in objects.
