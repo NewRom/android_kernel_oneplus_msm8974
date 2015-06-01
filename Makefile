@@ -252,7 +252,7 @@ KERNELFLAGS     = -pipe -DNDEBUG $(ALIGNED) $(CHIP) -fgcse-las -fgcse-lm -fgcse-
 
 
 # kernel configuration
-ALIGNED = -O2 -floop-flatten -floop-parallelize-all -ftree-loop-linear -floop-interchange -floop-strip-mine -floop-block -fgcse-las -ftree-slp-vectorize -ftree-vectorize -fpredictive-commoning
+ALIGNED = -O3 -floop-flatten -floop-parallelize-all -ftree-loop-linear -floop-interchange -floop-strip-mine -floop-block -fgcse-las -ftree-slp-vectorize -ftree-vectorize -fpredictive-commoning -Wno-error=maybe-uninitialized -Wno-unused -Wno-unused-parameter -Wno-error=unused -Wno-error=unused-parameter
 
 #Optimization for chip
 CHIP = -mcpu=cortex-a15 -mtune=cortex-a15 -mfpu=vfpv4 -mfpu=neon -marm -mfloat-abi=soft --param l1-cache-size=16 --param l2-cache-size=2048
@@ -362,7 +362,7 @@ include $(srctree)/scripts/Kbuild.include
 
 AS		= $(CROSS_COMPILE)as
 LD		= $(CROSS_COMPILE)ld
-REAL_CC		= $(CROSS_COMPILE)gcc
+CC		= $(CROSS_COMPILE)gcc
 CPP		= $(CC) -E
 AR		= $(CROSS_COMPILE)ar
 NM		= $(CROSS_COMPILE)nm
@@ -379,7 +379,7 @@ CHECK		= sparse
 
 # Use the wrapper for the compiler.  This wrapper scans for new
 # warnings and causes the build to stop upon encountering them.
-CC		= $(srctree)/scripts/gcc-wrapper.py $(REAL_CC)
+#CC		= $(srctree)/scripts/gcc-wrapper.py $(REAL_CC)
 
 CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 		  -Wbitwise -Wno-return-void $(CF)
