@@ -129,3 +129,4 @@ DATE_END=$(date +"%s")
 DIFF=$(($DATE_END - $DATE_START))
 echo "Time: $(($DIFF / 60)) minute(s) and $(($DIFF % 60)) seconds."
 echo
+mv ~/new/out/newKernel-CM12-.zip /www/devs/jgcaap/oneplus/kernel/newKernel-CM12-1.86.zip
