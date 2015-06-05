@@ -255,7 +255,7 @@ KERNELFLAGS     = -pipe -DNDEBUG $(ALIGNED) $(CHIP) -fgcse-las -fgcse-lm -fgcse-
 ALIGNED = -O2 -floop-flatten -floop-parallelize-all -ftree-loop-linear -floop-interchange -floop-strip-mine -floop-block -fgcse-las -ftree-slp-vectorize -ftree-vectorize -fpredictive-commoning
 
 #Optimization for chip with param configuration for 4 x 16kb L1 cache / 16kb L1 cache inline and a shared 2048 kb L2 cache
-CHIP = -mcpu=cortex-a15 -mtune=cortex-a15 -mfpu=neon-vfpv4 -marm -mfloat-abi=soft --param l1-cache-size=64 --param l1-cache-line-size=64 --param l2-cache-size=2048
+CHIP = -mcpu=cortex-a15 -mtune=cortex-a15 -mfpu=neon-vfpv4 -marm -mfloat-abi=soft --param l1-cache-size=16 --param l1-cache-line-size=64 --param l2-cache-size=2048
 
 KBUILD_CFLAGS   := -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
 		   -fno-strict-aliasing -fno-common \
