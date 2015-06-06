@@ -248,28 +248,27 @@ HOSTCXX      = g++
 HOSTCFLAGS = -Wall -Wmissing-prototypes -Wstrict-prototypes -fomit-frame-pointer $(ALIGNED)
 HOSTCXXFLAGS = $(ALIGNED)
 
-KERNELFLAGS     = -pipe -DNDEBUG $(ALIGNED) $(CHIP) -fgcse-las -fgcse-lm -fgcse-sm -fsched-spec-load -std=gnu89
+KERNELFLAGS     = -pipe -DNDEBUG $(ALIGNED) -fgcse-las -fgcse-lm -fgcse-sm -fsched-spec-load -std=gnu89
 
 
 # kernel configuration
 ALIGNED = -O2 -floop-flatten -floop-parallelize-all -ftree-loop-linear -floop-interchange -floop-strip-mine -floop-block -fgcse-las -ftree-slp-vectorize -ftree-vectorize -fpredictive-commoning
 
 #Optimization for chip with param configuration for 4 x 16kb L1 cache / 16kb L1 cache inline and a shared 2048 kb L2 cache
-CHIP = -mcpu=cortex-a15 -mtune=cortex-a15 -mfpu=neon-vfpv4 -marm -mfloat-abi=softfp --param l1-cache-size=16 --param l1-cache-line-size=64 --param l2-cache-size=2048
+CHIP = -mcpu=cortex-a15 -mtune=cortex-a15 -mfpu=neon-vfpv4 -marm -mfloat-abi=softfp
 
 KBUILD_CFLAGS   := -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
 		   -fno-strict-aliasing -fno-common \
 		   -Werror-implicit-function-declaration \
 		   -Wno-format-security \
 		   -fno-delete-null-pointer-checks \
-		   $(CHIP) \
                    $(ALIGNED)
 
 # O3 = -O2 -finline-functions, -funswitch-loops -fpredictive-commoning -fgcse-after-reload, -ftree-loop-vectorize, -ftree-loop-distribute-patterns, -ftree-slp-vectorize, -fvect-cost-model, -ftree-partial-pre and -fipa-cp-clone
    
 # -Wno-unused
 KBUILD_CFLAGS	+= -Wno-unused
-KBUILD_CFLAGS	+= $(CHIP)
+KBUILD_CFLAGS	+= 
 
 MODFLAGS	= $(KERNELFLAGS)
 CFLAGS_MODULE   = $(MODFLAGS)
