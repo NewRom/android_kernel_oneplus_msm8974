@@ -32,8 +32,6 @@
 #include <linux/completion.h>
 #include <linux/mutex.h>
 #include <linux/syscore_ops.h>
-#include <linux/kernel_stat.h>
-#include <linux/tick.h>
 
 #include <trace/events/power.h>
 

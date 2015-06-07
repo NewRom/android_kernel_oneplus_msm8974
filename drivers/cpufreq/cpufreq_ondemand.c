@@ -158,7 +158,7 @@ static struct dbs_tuners {
 	.input_boost = 0,
 };
 
-static inline u64 get_cpu_iowait_time(unsigned int cpu, u64 *wall)
+static inline cputime64_t get_cpu_iowait_time(unsigned int cpu, cputime64_t *wall)
 {
 	u64 iowait_time = get_cpu_iowait_time_us(cpu, wall);
 
