@@ -245,8 +245,8 @@ CONFIG_SHELL := $(shell if [ -x "$$BASH" ]; then echo $$BASH; \
 
 HOSTCC       = gcc
 HOSTCXX      = g++
-HOSTCFLAGS   = -Wall -Wmissing-prototypes -Wstrict-prototypes -O2 -fomit-frame-pointer -std=gnu89
-HOSTCXXFLAGS = -O2
+HOSTCFLAGS   = -Wall -Wmissing-prototypes -Wstrict-prototypes -O3 -fomit-frame-pointer -std=gnu89
+HOSTCXXFLAGS = -O3
 
 # Decide whether to build built-in, modular, or both.
 # Normally, just do built-in.
@@ -377,8 +377,8 @@ KBUILD_CFLAGS   := -Wundef -Wstrict-prototypes -Wno-trigraphs \
 		   -Wno-sizeof-pointer-memaccess \
 		   -std=gnu89
 
-KBUILD_CFLAGS	+= -O2 -mcpu=cortex-a15 -mtune=cortex-a15 -mfloat-abi=softfp -mfpu=neon-vfpv4
-KBUILD_CFLAGS	+= -Wno-unused
+KBUILD_CFLAGS	+= -O3 -mcpu=cortex-a15 -mtune=cortex-a15 -mfloat-abi=softfp -mfpu=neon-vfpv4
+KBUILD_CFLAGS	+= -Wno-unused -fno-tree-vectorize -Wno-array-bounds
 KBUILD_CFLAGS	+= --param l1-cache-size=16 --param l1-cache-line-size=64 --param l2-cache-size=2048
 
 CHIP = -mcpu=cortex-a15 -mtune=cortex-a15 -mfpu=neon-vfpv4
