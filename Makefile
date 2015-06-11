@@ -379,7 +379,6 @@ KBUILD_CFLAGS   := -Wundef -Wstrict-prototypes -Wno-trigraphs \
 
 KBUILD_CFLAGS	+= -O2 -mcpu=cortex-a15 -mtune=cortex-a15 -mfloat-abi=softfp -mfpu=neon-vfpv4
 KBUILD_CFLAGS	+= -Wno-unused
-KBUILD_CFLAGS	+= --param l1-cache-size=16 --param l1-cache-line-size=64 --param l2-cache-size=2048
 
 CHIP = -mcpu=cortex-a15 -mtune=cortex-a15 -mfpu=neon-vfpv4
 
