@@ -377,7 +377,7 @@ KBUILD_CFLAGS   := -Wundef -Wstrict-prototypes -Wno-trigraphs \
 		   -Wno-sizeof-pointer-memaccess \
 		   -std=gnu89
 
-KBUILD_CFLAGS	+= -O2 -mcpu=cortex-a15 -mtune=cortex-a15 -mfloat-abi=softfp -mfpu=neon-vfpv4
+KBUILD_CFLAGS	+= -O2 -mcpu=cortex-a15 -mtune=cortex-a15 -mfloat-abi=soft -mfpu=neon-vfpv4
 KBUILD_CFLAGS	+= -Wno-unused
 
 CHIP = -mcpu=cortex-a15 -mtune=cortex-a15 -mfpu=neon-vfpv4
